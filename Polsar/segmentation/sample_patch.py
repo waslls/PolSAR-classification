@@ -1,6 +1,6 @@
 import random
 
-def sample_patch(args, data_train):
+def sample_patch(args, data_train, label):
     if args.seed:
         random.seed(args.seed)
     count = 0
