@@ -1,7 +1,7 @@
 import numpy as np
-from test_augment import data_augments_brightsness, data_augments_contrast, data_label_augments_lr_flip, data_augments_saturation, data_label_augments_updown_flip, data_augment_add_noise, data_augment_rotate
+from augment import data_augments_brightsness, data_augments_contrast, data_label_augments_lr_flip, data_augments_saturation, data_label_augments_updown_flip, data_augment_add_noise, data_augment_rotate
 
-def data_aug(train_dataset,train_label):
+def data_aug(args, train_dataset,train_label):
 	if args.data_aug:
 		train_dataset1 = train_dataset
 		train_label1 = train_label
