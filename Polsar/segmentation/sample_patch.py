@@ -1,4 +1,6 @@
 import random
+from data_procession import compute_effective_ratio
+import numpy as np
 
 def sample_patch(args, data_train, label):
     if args.seed:
@@ -30,7 +32,7 @@ def sample_patch(args, data_train, label):
         count += 1
     length=len(sample_data)
 
-    if args.sample_buildings：
+    if args.sample_buildings:
         count = 0
         while count < args.random_sample_num_building: 
             random_height = random.randint(667, 667+args.img_h)
