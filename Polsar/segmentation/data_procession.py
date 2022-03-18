@@ -64,7 +64,7 @@ def compute_confusion_matrix(a, label, class_num):
 
 #将标签转为0,1,2...k
 #以前为0的(背景)保持为0
-def convert(a, b)
+def convert(a, b):
     c = np.array(b)
     q = c.shape[0]
     total_num, a_height = a.shape#750 1024
