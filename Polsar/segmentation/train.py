@@ -48,6 +48,7 @@ alpha=w.astype(np.float32)
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--net', type=str, default='UNet')
+	parser.add_argument('--Short_side', type=int, default=750)
 	parser.add_argument('--img_w', type=int, default=32)
 	parser.add_argument('--img_h', type=int, default=32)
 	parser.add_argument('--lr', type=float, default=1e-4)
@@ -88,6 +89,13 @@ def main():
 	dataset_test = tf.data.Dataset.from_tensor_slices((test_dataset, test_label))#((32, 32, 23), (32, 32, 1)), types: (tf.float32, tf.uint8)>
 	dataset_train = dataset_train.shuffle(buffer_size=args.buffer_size).batch(args.batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)##<PrefetchDataset shapes: ((None, 32, 32, 23), (None, 32, 32, 1)), types: (tf.float32, tf.uint8)>
 	dataset_test = dataset_test.batch(args.batch_size)##<BatchDataset shapes: ((None, 32, 32, 23), (None, 32, 32, 1)), types: (tf.float32, tf.uint8)>
+	
+	pad = np.array([[0, 1024-args.Short_side], [0, 0], [0, 0]])
+	data_all = tf.pad(data_all, pad)
+	data_all = tf.cast(data_all, tf.float32) * 2 - 1
+	data_all = cut_image(data_all, args.img_h)
+	data_all = tf.data.Dataset.from_tensor_slices(data_all)
+	data_all = data_all.batch(args.batch_size)
 	
 	if args.user_defined==0:
 		class MeanIoU(tf.keras.metrics.MeanIoU):  # 针对非独热编码
@@ -145,30 +153,33 @@ def main():
 			conv_net.save_weights(model_path)
 			print(f'----- Save model: {model_path}.tf_params')
 
-			result = conv_net.predict(data_test)#(1024, 32, 32, 16)
+			#对全图预测、打印、保存
+			result = conv_net.predict(data_all)#(1024, 32, 32, 16)
 			result = tf.argmax(result, axis=-1)
 			result = combination(result)#(1024, 1024)
-			plt.imshow(result)#[ 0  2  3  4  5  6  7  8  9 10 11 12 13 14 15]
+			plt.imshow(result)
 			plt.show()
 			np.savetxt('res'+str(g),result)
-			np.unique(result)
-
+			print('predicted cls included:{}'.format(np.unique(result)))
+			
+			#计算混淆矩阵
 			result = result[0:750]
 			result[label==0] = 0
-
 			confusion_matrix=compute_confusion_matrix(result,label,args.num_class)[1:,1:]
 			count_converted = Counter(label.flatten())#返回的是字典 key是元素的值 value是这个元素的个数
-			#每类准确率
+			
+			#类别准确率
 			acc_class = compute_acc_class(count_converted, confusion_matrix)
-			print(acc_class)
+			print('cur_cls_acc:{}'.format(acc_class))
 			for i in range(args.num_class-1):
 				acc_mean_class[i] += 100 * acc_class[i]
-				print(acc_mean_class[i]/(g+1))
+				print('mean_cls_acc:{}'.format(acc_mean_class[i]/(g+1)), end='')
+				
 			#总体准确率
 			acc = np.trace(confusion_matrix)/np.array([label!=0]).sum()
 			acc_sum += 100 * acc
 			print('Accuracy of the network on the test images: %9f %%' % (100*acc))
-			print('acc_mean of %d loop is %5f' % (g+1, acc_sum / (g + 1)))
+			print('mean_acc of %d loop is %5f' % (g+1, acc_sum / (g + 1)))
 	
 	
 if __name__ == '__main__':
