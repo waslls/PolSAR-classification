@@ -30,9 +30,4 @@ def data_aug(train_dataset,train_label):
 		print(np.array(train_dataset).shape)
 		print(np.array(train_label).shape)
 
-		train_dataset = tf.cast(train_dataset, tf.float32)*2-1
-		test_dataset = tf.cast(test_dataset, tf.float32)*2-1
-
-		train_label = np.expand_dims(train_label, axis=3)
-		test_label =np.expand_dims(test_label, axis=3)
-		return train_dataset, train_label, test_dataset, test_label
+		return train_dataset, train_label
