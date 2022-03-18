@@ -57,7 +57,7 @@ def main():
     parser.add_argument('--label_folder', type=str, default=r'./label_f1.png')
     parser.add_argument('--save_freq', type=int, default=2)
     parser.add_argument('--checkpoint_folder', type=str, default='./output')
-    parser.add_argument('--data_aug', type=int, default=1)
+    parser.add_argument('--data_aug', type=int, default=1)#是否进行数据增强
     parser.add_argument('--train_ratio', type=float, default=0.8)
     parser.add_argument('--effective_ratio', type=float, default=0.65)
     parser.add_argument('--effective_ratio_building', type=float, default=0.35)
@@ -193,6 +193,7 @@ def main():
             # 总体准确率
             acc = np.trace(confusion_matrix) / np.array([label != 0]).sum()
             acc_sum += 100 * acc
+            print()
             print('Accuracy of the network on the test images: %9f %%' % (100 * acc))
             print('mean_acc of %d loop is %5f' % (g + 1, acc_sum / (g + 1)))
 
