@@ -1,3 +1,5 @@
+import tensorflow as tf
+
 def focal_loss_softmax(labels, logits, class_num, alpha=None, gamma=2, size_average=True):
     """
     Computer focal loss for segmentation
