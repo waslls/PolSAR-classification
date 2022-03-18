@@ -3,6 +3,7 @@ from augment import data_augments_brightsness, data_augments_contrast, data_labe
 
 def data_aug(args, train_dataset,train_label):
     if args.data_aug:
+        print('start augmentation')
         train_dataset1 = train_dataset
         train_label1 = train_label
 
