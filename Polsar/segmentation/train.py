@@ -16,7 +16,7 @@ from data_aug import data_aug
 from focal_loss import focal_loss_softmax
 from sklearn.metrics import confusion_matrix
 from data_procession import combination, cut_image, convert, compute_confusion_matrix, compute_effective_ratio, compute_acc_class, compute_iou
-
+import datetime
 
 def train(args, conv_net, loss_metrics, acc_metrics, alpha, dataset_train, model, creterion, optimizer):
     for idx, (data, label) in enumerate(dataset_train):
@@ -41,21 +41,25 @@ def test(loss_metrics, acc_metrics, dataset_test, model, creterion):
         acc_metrics(label, y_perd)
     return loss_metrics.result(), acc_metrics.result()
 
+#tensorboard
+current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
+test_log_dir = 'logs/gradient_tape/' + current_time + '/test'
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--net', type=str, default='UNet')
     parser.add_argument('--Short_side', type=int, default=750)
-    parser.add_argument('--feature_num', type=int, default=124)
+    parser.add_argument('--feature_num', type=int, default=23)
     parser.add_argument('--img_w', type=int, default=32)
     parser.add_argument('--img_h', type=int, default=32)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--num_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=8)
-    parser.add_argument('--feature_folder', type=str,
-                        default='./features_fluolida')  # './features_124'、'./features_fluolida'
+    parser.add_argument('--feature_folder', type=str,default='./features_23')  # './features_124'、'./features_23'
     parser.add_argument('--label_folder', type=str, default=r'./label_f1.png')
-    parser.add_argument('--save_freq', type=int, default=2)
     parser.add_argument('--checkpoint_folder', type=str, default='./output')
     parser.add_argument('--data_aug', type=int, default=1)#是否进行数据增强
     parser.add_argument('--train_ratio', type=float, default=0.8)
@@ -65,8 +69,6 @@ def main():
     parser.add_argument('--num_class', type=int, default=16)
     parser.add_argument('--seed', type=int, default=2021)
     parser.add_argument('--lr_decay', type=int, default=0)
-    parser.add_argument('--save_train', type=int, default=0)
-    parser.add_argument('--val_acc', type=int, default=0)
     parser.add_argument('--focal', type=int, default=0)
     parser.add_argument('--Sampling_by_step', type=int, default=1)
     parser.add_argument('--sample_buildings', type=int, default=1)
@@ -84,14 +86,10 @@ def main():
     train_label = np.expand_dims(train_label, axis=3)
     test_label = np.expand_dims(test_label, axis=3)
 
-    dataset_train = tf.data.Dataset.from_tensor_slices(
-        (train_dataset, train_label))  # ((32, 32, 23), (32, 32, 1)), types: (tf.float32, tf.uint8)>
-    dataset_test = tf.data.Dataset.from_tensor_slices(
-        (test_dataset, test_label))  # ((32, 32, 23), (32, 32, 1)), types: (tf.float32, tf.uint8)>
-    dataset_train = dataset_train.shuffle(buffer_size=args.buffer_size).batch(args.batch_size).prefetch(
-        buffer_size=tf.data.experimental.AUTOTUNE)  ##<PrefetchDataset shapes: ((None, 32, 32, 23), (None, 32, 32, 1)), types: (tf.float32, tf.uint8)>
-    dataset_test = dataset_test.batch(
-        args.batch_size)  ##<BatchDataset shapes: ((None, 32, 32, 23), (None, 32, 32, 1)), types: (tf.float32, tf.uint8)>
+    dataset_train = tf.data.Dataset.from_tensor_slices((train_dataset, train_label))  # ((32, 32, 23), (32, 32, 1)), types: (tf.float32, tf.uint8)>
+    dataset_test = tf.data.Dataset.from_tensor_slices((test_dataset, test_label))  # ((32, 32, 23), (32, 32, 1)), types: (tf.float32, tf.uint8)>
+    dataset_train = dataset_train.shuffle(buffer_size=args.buffer_size).batch(args.batch_size).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)  ##<PrefetchDataset shapes: ((None, 32, 32, 23), (None, 32, 32, 1)), types: (tf.float32, tf.uint8)>
+    dataset_test = dataset_test.batch(args.batch_size)  ##<BatchDataset shapes: ((None, 32, 32, 23), (None, 32, 32, 1)), types: (tf.float32, tf.uint8)>
 
     pad = np.array([[0, 1024 - args.Short_side], [0, 0], [0, 0]])
     data_all = tf.pad(data_all, pad)
@@ -107,7 +105,7 @@ def main():
     w = w / sum(w)
     alpha = w.astype(np.float32)
 
-    if args.user_defined == 0:
+    if not args.user_defined:
         class MeanIoU(tf.keras.metrics.MeanIoU):  # 针对非独热编码
             def __call__(self, y_true, y_pred, sample_weight=None):
                 y_pred = tf.argmax(y_pred, axis=-1)
@@ -125,48 +123,41 @@ def main():
             optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
             loss_metrics = tf.keras.metrics.Mean(name='loss')
             acc_metrics = tf.keras.metrics.SparseCategoricalAccuracy('acc')
+            best_vloss = 1_000_000.
             for epoch in range(args.num_epochs):
                 train_loss, train_acc = train(args, conv_net, loss_metrics, acc_metrics, alpha, dataset_train=dataset_train,
                                               model=conv_net,
                                               creterion=creterion,
                                               optimizer=optimizer)
+                # tensorboard
+                with train_summary_writer.as_default():
+                    tf.summary.scalar('loss', train_loss, step=epoch)
+                    tf.summary.scalar('accuracy', train_acc, step=epoch)
+
                 loss_metrics.reset_states()
                 acc_metrics.reset_states()
                 if args.lr_decay and train_acc > 0.975:
                     optimizer.learning_rate = optimizer.learning_rate * 0.98
-
                 print(f"----- Epoch[{epoch}/{args.num_epochs}] Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f}")
-                if args.save_train and epoch > 15 and (
-                        epoch % args.save_freq == 0 or epoch == args.num_epochs):  # 仅仅借助train loss 或 acc保存。
-                    model_path = os.path.join(args.checkpoint_folder,
-                                              f"{args.net}-Epoch-{epoch}-Loss-{train_loss}-Acc-{train_acc}")
-                    conv_net.save_weights(model_path)
-                    print(f'----- Save model: {model_path}.tf_params')
 
                 test_loss, test_acc = test(loss_metrics, acc_metrics, dataset_test=dataset_test,
                                            model=conv_net,
                                            creterion=creterion)
+                # tensorboard
+                with test_summary_writer.as_default():
+                    tf.summary.scalar('loss', test_loss, step=epoch)
+                    tf.summary.scalar('accuracy', test_acc, step=epoch)
+
                 loss_metrics.reset_states()
                 acc_metrics.reset_states()
                 print(f"----- Epoch[{epoch}/{args.num_epochs}] Test Loss: {test_loss:.4f} Test Acc: {test_acc:.4f}")
-                if args.val_acc:  # 借助train和test acc来保存模型和终止训练，未用loss数据。
-                    if test_acc > 0.98 and signal == 0:
-                        model_path = os.path.join(args.checkpoint_folder,
-                                                  f"{args.net}-Epoch-{epoch}-Acc-{test_acc}-Seed-{args.seed}")
-                        conv_net.save_weights(model_path)
-                        print(f'----- Save model: {model_path}.tf_params')
-                        signal = 1
-                    if test_acc > 0.99 and train_acc > 0.99:
-                        model_path = os.path.join(args.checkpoint_folder,
-                                                  f"{args.net}-Epoch-{epoch}-Acc-{test_acc}-Seed-{args.seed}")
-                        conv_net.save_weights(model_path)
-                        print(f'----- Save model: {model_path}.tf_params')
-                        break
-
-            model_path = os.path.join(args.checkpoint_folder,
-                                      f"{args.net}-Loop-{g}-Epoch-{epoch}-tLoss-{train_loss}-tAcc-{train_acc}-eLoss-{test_loss}-eAcc-{test_acc}")
-            conv_net.save_weights(model_path)
-            print(f'----- Save model: {model_path}.tf_params')
+                if test_loss < best_vloss:
+                    best_vloss = test_loss
+                    model_path = os.path.join(args.checkpoint_folder, f"model_best")
+                    conv_net.save_weights(model_path)
+                    print('.............save best model at {} epoch'.format(epoch + 1))
+            # model_path = os.path.join(args.checkpoint_folder,f"{args.net}-Epoch-{epoch}-Acc-{test_acc}-Seed-{args.seed}")
+            # model_path = os.path.join(args.checkpoint_folder,f"{args.net}-Loop-{g}-Epoch-{epoch}-tLoss-{train_loss}-tAcc-{train_acc}-eLoss-{test_loss}-eAcc-{test_acc}")
 
             # 对全图预测、打印、保存
             result = conv_net.predict(data_all)  # (1024, 32, 32, 16)
